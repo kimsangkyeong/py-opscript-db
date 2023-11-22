@@ -3,6 +3,9 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# info file
+DB신청정보_20231122.xlsx
+
 # C extensions
 *.so
 
