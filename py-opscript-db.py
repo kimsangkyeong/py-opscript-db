@@ -26,8 +26,8 @@ import pandas as pd  # pip install pandas
 from datetime import date, datetime
 import IPython.display as display # pip install ipython
 
-pd.set_option("display.max_colwidth", 999)  # 컬럼 정보 보여주기
-pd.set_option("display.max_rows", 150)  # row 정보 보여주기
+pd.set_option("display.max_colwidth", 100)  # 컬럼 정보 보여주기
+pd.set_option("display.max_rows", 999)  # row 정보 보여주기
 
 def df_to_excel(writer, df, sheetname):
   df.to_excel(writer, sheet_name=sheetname, startrow = 2, index=False)
@@ -40,16 +40,18 @@ def df_to_excel(writer, df, sheetname):
   header_format = workbook.add_format({'bold': True, 
                                        'align': 'center', 
                                        'valign': 'vcenter', 
-                                       'font_size': 10,
+                                       'font_size': 9,
                                        'text_wrap': True, 
                                        'fg_color': '#D9D9D9', 
                                        'border': 1})
   col_width_list = []
   for col_num, value in enumerate(df.columns.values):
     worksheet.write(2, col_num, value, header_format)
-    col_width_list.append(12) # initialize
+    if value in ["script_user", "sspord_grant", "sspstl_grant", "sspcmp_grant"] :
+      col_width_list.append(35)
+    else :
+      col_width_list.append(7) # initialize
 
-  # klogger_dat.debug(f'col_width_list : {col_width_list}')
   # Set the Column Width
   for col, colwidth in enumerate(col_width_list):
     worksheet.set_column(col,col+1, colwidth)
@@ -57,68 +59,33 @@ def df_to_excel(writer, df, sheetname):
   data_format = workbook.add_format({'align': 'left', 
                                      'valign': 'vcenter', 
                                      'text_wrap': True,
-                                     'font_size': 9,
+                                     'font_size': 8,
+                                     'border': 1})
+  missing_data_format = workbook.add_format({'align': 'left', 
+                                     'valign': 'vcenter', 
+                                     'text_wrap': True,
+                                     'font_size': 8,
+                                     'fg_color': '#F79646', 
                                      'border': 1})
   row_idx, col_idx = df.shape
   for row in range(row_idx):
     for col in range(col_idx):
-      if type(df.values[row, col]) == type(dict()) :
-        data_len = np.ceil(len(str(df.values[row, col])) / 4)
-        if col_width_list[col] < data_len:
-          if data_len >= 100 :
-            col_width_list[col] = 100
-          else :
-            col_width_list[col] = data_len
-          worksheet.set_column(col,col+1, col_width_list[col])
-        worksheet.write(row + 3, col, str(df.values[row, col]), data_format)
-      elif type(df.values[row, col]) == type(str()) : 
-        data_len = len(df.values[row, col]) 
-        if col_width_list[col] < data_len :
-          if data_len >= 60 :
-            col_width_list[col] = 50
-          elif data_len >= 40 :
-                col_width_list[col] = 40
-          elif data_len >= 30 :
-            col_width_list[col] = 25
-          else :
-            col_width_list[col] = data_len
-          worksheet.set_column(col,col+1, col_width_list[col])
-        worksheet.write(row + 3, col, df.values[row, col], data_format)
+      if df.values[row, col] == "MISSING" :
+        worksheet.write(row + 3, col, df.values[row, col], missing_data_format)
       else :
         worksheet.write(row + 3, col, df.values[row, col], data_format)
 
-  # Merge Cell in column 'A' only
-  # Merge cell format
-  merge_format = workbook.add_format({'font_size': 9,
-                                      'border': 1,
-                                      'align': 'left',
-                                      'valign': 'vcenter',
-                                      'text_wrap': True})
-  col = 0; # column 'A' 
-  befdata = ''; startrow = 0; currrow = 0;
-  for row in range(row_idx):
-    currrow = row
-    if befdata == df.values[row, col] :
-      continue
-    else :
-      if befdata != '' and (row - startrow >= 2) :
-        # klogger.debug(f'startrow : [{startrow}], row : [{row}], befdata : [{befdata}], data : [{df.values[row, col]}]')
-        worksheet.merge_range(f'A{startrow+4}:A{(row-1)+4}', str(befdata) if type(befdata) == type(dict()) else befdata, merge_format)
-      startrow = row
-      befdata = df.values[row, col]
-  # klogger.debug(f'for loop : startrow : [{startrow}], row : [{currrow}], befdata : [{befdata}], data : [{df.values[row, col]}]')
-  if currrow - startrow >= 1 : # last merge cell check
-    worksheet.merge_range(f'A{startrow+4}:A{currrow+4}', str(befdata) if type(befdata) == type(dict()) else befdata, merge_format)
-    
   # Add the remark to the excel
   worksheet.write(len(df)+4, 0, 'Remark:', workbook.add_format({'bold': True}))
   worksheet.write(len(df)+5, 0, 'The last update time is ' + datetime.now().strftime('%Y-%m-%d %H:%M') + '.')
 
-def main(argv):
-  print(f'argv : {argv}')
-  df = pd.read_excel(argv[1], sheet_name='request')
-  print(f'{df.columns}')
-  print(f'{df.info()}')
+def data_preprocessing(indf):
+
+  df = indf
+
+  # P사번 컬럼 숫자형을 string type을 강제 설정
+  df["P사번"] = df["P사번"].astype('string')
+
   # 결측치 None으로 대체
   df["P사번"] = df["P사번"].fillna("MISSING")
   df["대상DB"] = df["대상DB"].fillna("MISSING")
@@ -126,50 +93,109 @@ def main(argv):
   df["권한"] = df["권한"].fillna("MISSING")
 
   # 대문자로 표준화
-  df.loc[:,"대상DB"] = df["대상DB"].str.upper()
-  df.loc[:,"대상 스키마"] = df["대상 스키마"].str.upper()
-  df.loc[:,"권한"] = df["권한"].str.upper()
-  cols = ["사용자","P사번", "대상DB", "대상 스키마", "권한"]
-
-  # 추가 컬럼 추가
+  df.loc[:,"P사번"] = df["P사번"].replace(' ','',regex=True).str.upper()
+  df.loc[:,"대상DB"] = df["대상DB"].replace(' ','',regex=True).str.upper()
+  df.loc[:,"대상 스키마"] = df["대상 스키마"].replace(' ','',regex=True).str.upper()
+  df.loc[:,"권한"] = df["권한"].replace(' ','',regex=True).str.upper()
+  
+  # script 결과 저장 추가 컬럼 추가
   df["script_user"] = ""
   df["sspord_grant"] = ""
   df["sspstl_grant"] = ""
   df["sspcmp_grant"] = ""
-  excols = ["사용자","P사번", "대상DB", "대상 스키마", "권한","script_user","sspord_grant","sspstl_grant","sspcmp_grant"]
-#   print(f'{df[cols]}')
-  print(f'{df.shape}, rowcount = {df.shape[0]}')
-  initpasswd="sktssp20~!"
-  for rowidx in range(df.shape[0]):
+  return df
+
+def grant_script(listschema, userid, dml_str, dbinfo, schemadf):
+  grant_list = []
+  print(f'grant_script : {userid}, {dbinfo}, {listschema}, {dml_str}')
+  for schemaitem in listschema :
+    if schemaitem != "MISSING" :
+      if ( "전체" in schemaitem or "ALL" in schemaitem ) :
+        for dbidx in range(schemadf.shape[0]):
+          if dbinfo == (schemadf.loc[dbidx, "DB"]).upper() :
+            for schemainfo in schemadf.loc[dbidx, "SCHEMA"].split("/") :
+              grant_list.append(f"grant {dml_str} on {schemainfo}.* to '{userid}'@'%'; ")
+      else :
+        grant_list.append(f"grant {dml_str} on {schemaitem}.* to '{userid}'@'%'; ")
+  grant_str = ''.join(grant_list)
+  # print(f'grant_str : {grant_str}')
+  return grant_str
+
+def generate_script(datadf, schemadf, envdf):
+  gendf = datadf 
+  initpasswd = envdf.loc[0,'InitPasswd'] 
+  dml_keymap = {"C" : "insert", "R" : "select", "U" : "update", "D" : "delete",
+                "A" : "insert,select,update,delete" }
+  dbinfo_keymap = {"SSPORD" : "sspord_grant", "SSPSTL" : "sspstl_grant", "SSPCMP" : "sspcmp_grant"}
+
+  for rowidx in range(gendf.shape[0]):
     # print(f'idx = {rowidx}, {df.loc[rowidx, cols]}')
-    usernm = df.loc[rowidx, "사용자"]
-    userid = df.loc[rowidx, "P사번"]
-    dbinfo = df.loc[rowidx, "대상DB"]
-    rawschema = df.loc[rowidx, "대상 스키마"]
+    usernm = gendf.loc[rowidx, "사용자"]
+    userid = gendf.loc[rowidx, "P사번"]
+    dbinfo = gendf.loc[rowidx, "대상DB"]
+    rawschema = gendf.loc[rowidx, "대상 스키마"]
     listschema = rawschema.split("/")
-    rawauthority = df.loc[rowidx, "권한"]
+    rawauthority = gendf.loc[rowidx, "권한"]
     listauthority = rawauthority.split("/")
-    print(f'idx = {rowidx},{usernm},{userid},{dbinfo},{rawschema},{listschema},{rawauthority},{listauthority}')
+    # print(f'idx = {rowidx},{usernm},{userid},{dbinfo},{rawschema},{listschema},{rawauthority},{listauthority}')
+
     # create user script 생성
     if userid != "MISSING" :
-      print(f'userid {userid}, type{type(userid)}')
       script_user = f"create user '{userid}'@'%' identified by '{initpasswd}';" 
-      df.loc[rowidx,"script_user"] = script_user
-    # SSPORD DBMS 권한부여
-    if dbinfo == "SSPORD" :
-      df.loc[rowidx,"sspord_grant"] = "SSPORD"
-    # SSPSTL DBMS 권한부여
-    if dbinfo == "SSPSTL" :
-      df.loc[rowidx,"sspstl_grant"] = "SSPSTL"
-    # SSPCMP DBMS 권한부여
-    if dbinfo == "SSPCMP" :
-      df.loc[rowidx,"sspcmp_grant"] = "SSPCMP"
+      gendf.loc[rowidx,"script_user"] = script_user
+    
+    # Grant 권한 문자열 생성
+    if rawauthority != "MISSING" :
+      if ( "전체" in rawauthority or "ALL" in rawauthority ):
+        dml_str = dml_keymap["A"]
+      else :
+        dml_str_list = []
+        for auth in listauthority:
+            if auth != "MISSING" :
+              dml_str_list.append(dml_keymap[auth])
+        dml_str = ','.join(dml_str_list)
+    else :
+      dml_str = "MISSING" 
+    # print(f'dml_str : {dml_str}')
 
-    if rowidx > 8 :
-      break
-#   with pd.ExcelWriter(output_file, engine='xlsxwriter') as writer:
-#     df_to_excel(writer, df_route53           , 'route53')                     # 1
-  print(f'{df[excols].head()}')
+    # SSPORD/SSPSTL/SSPCMP DBMS 권한부여 
+    if not ( rawschema == "MISSING" or dml_str == "MISSING" or dbinfo == "MISSING" ) :
+      gendf.loc[rowidx,dbinfo_keymap[dbinfo]] = grant_script(listschema, userid, dml_str, dbinfo, schemadf)
+
+  return gendf
+
+def main(argv):
+
+  # 파일 읽어오기
+  raw_df = pd.read_excel(argv[1], sheet_name='request')
+  # print(f'{raw_df}')
+  schemadf = pd.read_excel(argv[1], sheet_name='schema')
+  # print(f'{schemadf.head()}')
+  envdf = pd.read_excel(argv[1], sheet_name='env')
+  # print(f'{envdf.head()}')
+
+  # 데이타 전처리 : Cleansing
+  datadf = data_preprocessing(raw_df)
+  # print(f'==> {datadf}')
+  
+  # script sql 문장 생성하기
+  gendf = generate_script(datadf, schemadf, envdf)
+
+  # 현재 디렉토리
+  path_cwd = os.getcwd()
+  # OS 판단  : win32, linux, cygwin, darwin, aix
+  my_os = sys.platform
+  if my_os == "linux":
+    output_file = f'{path_cwd}/generated_dbscript_{datetime.now().strftime("%Y%m%d-%H%M")}.xlsx'
+  else:
+    output_file = f'{path_cwd}\generated_dbscript_{datetime.now().strftime("%Y%m%d-%H%M")}.xlsx'
+
+  # print(f'{gendf}')
+
+  with pd.ExcelWriter(output_file, engine='xlsxwriter', engine_kwargs={'options': {'nan_inf_to_errors': True}}) as writer:
+    df_to_excel(writer, gendf, 'dbscripts')  
+
+  print("작업완료 : 생성된 output_file : ", output_file)
 
 if __name__ == "__main__":
    main(sys.argv[:])
